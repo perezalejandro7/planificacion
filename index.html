@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Revisión Matinal de Tintorería</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: una sola columna de trabajo — carga de archivos arriba, luego resumen del día, faltantes por urgencia y avisos. */
+:root {
+  --bg: #f3f5f9; --surface: #ffffff; --ink: #151a2d; --muted: #5a6279; --line: #dbe0ea;
+  --accent: #283a8f; --accent-soft: #e6eaf7;
+  --crit: #b42318; --crit-bg: #fdeceb; --warn: #8f5b00; --warn-bg: #fff3d6; --ok: #1d7a4c; --ok-bg: #e3f4ea;
+  --f-display: "Archivo", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1220; --surface: #181c2e; --ink: #e7e9f2; --muted: #9aa1b8; --line: #2b3149;
+  --accent: #9fb0ff; --accent-soft: #232a4a;
+  --crit: #ff8a7a; --crit-bg: #3a1b1d; --warn: #f2c063; --warn-bg: #33290f; --ok: #6fd3a0; --ok-bg: #12301f; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1220; --surface: #181c2e; --ink: #e7e9f2; --muted: #9aa1b8; --line: #2b3149;
+  --accent: #9fb0ff; --accent-soft: #232a4a;
+  --crit: #ff8a7a; --crit-bg: #3a1b1d; --warn: #f2c063; --warn-bg: #33290f; --ok: #6fd3a0; --ok-bg: #12301f; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 16px/1.5 var(--f-body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); font-stretch: 85%; margin: 0; text-wrap: balance; letter-spacing: -0.01em }
+h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 800 }
+h2 { font-size: 1.35rem; font-weight: 750 }
+h3 { font-size: 1.05rem; font-weight: 700 }
+.eyebrow { font: 600 0.75rem/1 var(--f-body); text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted) }
+.mono { font-family: var(--f-mono); font-size: 0.9em }
+.num { font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+button { font: 600 0.95rem var(--f-body); border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink) }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface) }
+button:focus-visible, label.drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px }
+
+header.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between }
+header.top p { margin: 6px 0 0; max-width: 62ch; color: var(--muted) }
+
+/* Carga */
+.intake { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 16px }
+label.drop { display: grid; gap: 4px; place-items: center; text-align: center; padding: 22px 16px; border: 2px dashed var(--line); border-radius: var(--r); cursor: pointer; transition: border-color .15s, background .15s }
+label.drop:hover, body.dragging label.drop { border-color: var(--accent); background: var(--accent-soft) }
+label.drop strong { font: 700 1.1rem var(--f-display); font-stretch: 90% }
+label.drop input { position: absolute; width: 1px; height: 1px; opacity: 0 }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px }
+.slot { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; padding: 9px 12px; border-radius: 8px; background: var(--bg); min-width: 0 }
+.slot .dot { grid-row: span 2; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted) }
+.slot.ok .dot { background: var(--ok); border-color: var(--ok) }
+.slot.opt .dot { border-style: dashed }
+.slot b { font-size: 0.92rem }
+.slot span { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.intake-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between }
+.msg { font-size: 0.92rem }
+.msg.err { color: var(--crit) } .msg.warn { color: var(--warn) }
+
+.banner { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: var(--r); background: var(--accent-soft); font-size: 0.95rem }
+.banner.sample { background: var(--warn-bg) }
+
+/* Resumen */
+.lead { font-size: 1.12rem; max-width: 70ch; margin: 0 }
+.periods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px }
+.period { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0 }
+.period.today { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent) }
+.figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 10px }
+.fig .v { font: 750 1.4rem/1.1 var(--f-display); font-stretch: 80%; font-variant-numeric: tabular-nums; white-space: nowrap }
+.fig .l { font-size: 0.82rem; color: var(--muted) }
+.period p { margin: 0; font-size: 0.93rem }
+.period ul { margin: 0; padding-left: 18px; font-size: 0.88rem; color: var(--muted) }
+
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r) }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.93rem }
+th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap }
+th:first-child, td:first-child { text-align: left }
+thead th { font: 600 0.75rem var(--f-body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted) }
+tbody tr:last-child td { border-bottom: 0 }
+tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: 0 }
+table.pref th, table.pref td { text-align: left }
+table.pref th:last-child, table.pref td:last-child { text-align: right }
+.bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--warn); vertical-align: middle; margin-right: 6px }
+
+/* Faltantes */
+.group { display: grid; gap: 8px }
+.group-h { display: flex; gap: 10px; align-items: baseline }
+.pill { font: 700 0.75rem var(--f-body); text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 99px }
+.pill.hoy { background: var(--crit-bg); color: var(--crit) }
+.pill.manana { background: var(--warn-bg); color: var(--warn) }
+.pill.despues { background: var(--accent-soft); color: var(--accent) }
+.short { background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: var(--r); padding: 12px 16px; display: grid; gap: 6px; min-width: 0 }
+.short.hoy { border-left-color: var(--crit) } .short.manana { border-left-color: var(--warn) }
+.short-top { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: space-between; align-items: baseline }
+.short-top h3 { font-stretch: 90% }
+.falta { font: 750 1.15rem var(--f-display); font-stretch: 85%; color: var(--crit); white-space: nowrap }
+.short.despues .falta { color: var(--ink) }
+.facts { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 0.9rem; color: var(--muted) }
+.facts b { color: var(--ink); font-weight: 600 }
+.chip { font-size: 0.75rem; padding: 1px 7px; border-radius: 4px; background: var(--bg); color: var(--muted); margin-left: 6px; font-family: var(--f-body) }
+details summary { cursor: pointer; font-size: 0.88rem; color: var(--accent); font-weight: 600 }
+details .inner { margin-top: 8px; overflow-x: auto }
+details table { font-size: 0.85rem }
+details td, details th { padding: 4px 10px }
+.note { font-size: 0.88rem; color: var(--muted); max-width: 75ch; margin: 0 }
+.empty { padding: 14px 16px; border-radius: var(--r); background: var(--ok-bg); color: var(--ok); font-weight: 600 }
+
+/* Avisos */
+.avisos { display: grid; gap: 8px }
+.aviso { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 16px }
+.aviso summary { color: var(--ink); font-size: 0.98rem; display: flex; gap: 10px; align-items: baseline; list-style: none }
+.aviso summary::-webkit-details-marker { display: none }
+.aviso summary::before { content: "▸"; color: var(--muted); transition: transform .15s }
+.aviso[open] summary::before { transform: rotate(90deg) }
+.aviso .count { font-family: var(--f-mono); font-size: 0.85rem; color: var(--muted) }
+.aviso ul { margin: 8px 0 2px; padding-left: 22px; font-size: 0.92rem; display: grid; gap: 4px }
+section { display: grid; gap: 14px }
+.sec-h { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Tintorería · revisión de primera hora</div>
+      <h1>Revisión Matinal de Tintorería</h1>
+      <p>Sube los archivos del día y la página calcula qué hay para producir, qué órdenes faltan por prefijar, qué producto no alcanza y qué datos revisar. Los archivos se leen en tu navegador; no se envían a ningún lado.</p>
+    </div>
+    <button id="copiar" type="button">Copiar resumen</button>
+  </header>
+
+  <div class="intake">
+    <label class="drop" for="files">
+      <input id="files" type="file" multiple accept=".xls,.xlsx">
+      <strong>Arrastra aquí los archivos o haz clic para elegirlos</strong>
+      <span class="muted">Puedes subirlos todos juntos. Cada archivo se reconoce por su contenido, no por el nombre.</span>
+    </label>
+    <div class="slots" id="slots"></div>
+    <div class="intake-foot">
+      <div class="msg" id="msg" role="status"></div>
+      <button id="limpiar" type="button">Quitar archivos</button>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+  <div id="out" style="display:grid;gap:36px"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* Lógica del informe de planificación. Recibe filas (arrays) de cada archivo y calcula todo.
+   Reglas: ver claude/especificacion-informe-planificacion.md */
+const Logic = (() => {
+  const FIBRAS = { "010": "Algodón", "020": "Nylon", "030": "Poliéster", "050": "Viscosa",
+    "011": "Algodón Lycra", "021": "Nylon Lycra", "031": "Poliéster Lycra", "051": "Viscosa Lycra",
+    "311": "P/A (P)", "312": "P/A (A)", "313": "P/A (2F)", "321": "P/A Lycra (P)", "322": "P/A Lycra (A)", "323": "P/A Lycra (2F)" };
+  const CAUSA = { R: "Reproceso", D: "Devolución" };
+  const ARREGLO = { M: "Matizado", J: "Jabonado", D: "Desmonte", I: "Igualación" };
+  const DIAS_PESADO_VIEJO = 7;
+  const SLOTS = {
+    treepoint: "Programación Treepoint",
+    planificado: "Vibrax · Planificado",
+    pesado: "Vibrax · Pesado",
+    kardex: "Kardex Materia Prima",
+    consignacion: "Kardex Consignación",
+    especiales: "Kardex Especiales",
+    ramas: "Seguimiento de ramas (ERP)",
+    maestro: "Maestro de referencias",
+  };
+  const OPCIONALES = new Set(["ramas", "maestro"]);
+  const LYCRA = new Set(["011", "021", "031", "051", "321", "322", "323"]);
+  const MESES_EN = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+    ene: 0, abr: 3, ago: 7, dic: 11 };
+
+  const s = (v) => (v === null || v === undefined ? "" : String(v).trim());
+  const num = (v) => { const n = typeof v === "number" ? v : parseFloat(s(v).replace(",", ".")); return isFinite(n) ? n : 0; };
+  const pad = (n) => String(n).padStart(2, "0");
+  const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  function identify(rows) {
+    const head = rows.slice(0, 8).map((r) => (r || []).map(s).join(" ")).join(" ").toLowerCase();
+    if (head.includes("lote_nro") && head.includes("nombrerama")) return "ramas";
+    if (head.includes("idref") && head.includes("prefij")) return "maestro";
+    if (head.includes("planificado sedomaster")) return "planificado";
+    if (head.includes("pesado sedomaster")) return "pesado";
+    if (head.includes("kardex materia prima")) return "kardex";
+    if (head.includes("consignaci")) return "consignacion";
+    if (head.includes("kardex especiales")) return "especiales";
+    if (head.includes("lotes planificados") || (head.includes("estado") && head.includes("orden"))) return "treepoint";
+    return null;
+  }
+
+  // "2026-10-22 07:43" | serial de Excel | Date
+  function parseFechaTP(v) {
+    if (v instanceof Date) return v;
+    if (typeof v === "number") return new Date(Math.round((v - 25569) * 864e5) + new Date().getTimezoneOffset() * 6e4);
+    const m = s(v).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  }
+  // DDMMAAAAHHMMSS (texto o número)
+  function parseFechaVX(v) {
+    const t = typeof v === "number" ? String(Math.round(v)).padStart(14, "0") : s(v);
+    const m = t.match(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2})$/);
+    return m ? new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]) : null;
+  }
+
+  function clasificar(orden) {
+    if (orden.startsWith("PP")) return { tipo: "Producción", subtipo: "Producción" };
+    if (orden.startsWith("LA")) return { tipo: "Lavado", subtipo: "Lavado" };
+    const m = orden.match(/^([RD])([MJDI])\d+$/);
+    if (m) return { tipo: "Reproceso", subtipo: `${CAUSA[m[1]]} ${ARREGLO[m[2]]}` };
+    return { tipo: "Manual", subtipo: "Programado manual" };
+  }
+
+  function leerTreepoint(rows) {
+    const iH = rows.findIndex((r) => r && r.some((v) => s(v) === "Estado"));
+    if (iH < 0) throw new Error("No encontré el encabezado 'Estado' en la programación de Treepoint.");
+    const hdr = rows[iH].map(s);
+    const col = {};
+    for (const n of ["Estado", "Máquina", "Lotes:", "Inicio", "Fin", "Orden", "Codigo", "Rollos", "Peso", "Cliente", "Referencia"]) {
+      col[n] = hdr.indexOf(n);
+      if (col[n] < 0) throw new Error(`Falta la columna '${n}' en la programación de Treepoint.`);
+    }
+    const out = [];
+    for (const r of rows.slice(iH + 1)) {
+      if (!r) continue;
+      const estado = s(r[col.Estado]);
+      if (estado !== "Start" && estado !== "Planned") continue;
+      const orden = s(r[col.Orden]);
+      const o = { estado, orden, maquina: s(r[col["Máquina"]]).replace(/\s+/g, ""), lotes: s(r[col["Lotes:"]]),
+        inicio: parseFechaTP(r[col.Inicio]), fin: parseFechaTP(r[col.Fin]), codigo: s(r[col.Codigo]),
+        rollos: num(r[col.Rollos]), peso: num(r[col.Peso]), cliente: s(r[col.Cliente]), referencia: s(r[col.Referencia]),
+        ...clasificar(orden) };
+      const m = o.codigo.match(/^(\d{3})(\d)(\d)(\d{3})/);
+      o.fibra = m ? FIBRAS[m[1]] || "" : "";
+      if (o.inicio) out.push(o);
+    }
+    return out;
+  }
+
+  function leerMovimientos(rows) {
+    const out = [];
+    for (const r of rows) {
+      if (!r) continue;
+      const f = parseFechaVX(r[0]);
+      if (!f) continue;
+      const unidad = s(r[6]).toLowerCase();
+      const cant = num(r[5]);
+      out.push({ fecha: f, maquina: s(r[1]), orden: s(r[2]), code: s(r[3]), nombre: s(r[4]), kg: unidad === "g" ? cant / 1000 : cant });
+    }
+    return out;
+  }
+
+  function leerKardex(rows) {
+    const iH = rows.findIndex((r) => r && s(r[0]) === "Code");
+    if (iH < 0) throw new Error("No encontré el encabezado 'Code' en un archivo de Kardex.");
+    const hdr = rows[iH].map(s);
+    const [ic, inom, iu, isf] = ["Code", "Nombre", "Unidad", "Stock Final"].map((n) => hdr.indexOf(n));
+    const out = {};
+    for (const r of rows.slice(iH + 1)) {
+      if (!r || !s(r[ic])) continue;
+      const u = s(r[iu]).toLowerCase();
+      if (u !== "kg" && u !== "g") continue;
+      const st = num(r[isf]);
+      out[s(r[ic])] = { nombre: s(r[inom]), kg: u === "g" ? st / 1000 : st };
+    }
+    return out;
+  }
+
+  // "01-Sep-26 00:07:19"
+  function parseFechaRama(v) {
+    if (v instanceof Date) return v;
+    if (typeof v === "number") return new Date(Math.round((v - 25569) * 864e5) + new Date().getTimezoneOffset() * 6e4);
+    const m = s(v).match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    const mes = MESES_EN[m[2].toLowerCase()];
+    const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+    return mes === undefined ? null : new Date(y, mes, +m[1], +m[4], +m[5], +(m[6] || 0));
+  }
+
+  function leerRamas(rows) {
+    const iH = rows.findIndex((r) => r && r.some((v) => s(v) === "lote_nro"));
+    const hdr = rows[iH].map(s);
+    const [il, ip, ifi, ir, ik] = ["lote_nro", "proceso", "fechaini", "nombrerama", "kilos"].map((n) => hdr.indexOf(n));
+    const pref = new Map();
+    let desde = null, hasta = null;
+    for (const r of rows.slice(iH + 1)) {
+      if (!r) continue;
+      const f = parseFechaRama(r[ifi]);
+      if (f) { if (!desde || f < desde) desde = f; if (!hasta || f > hasta) hasta = f; }
+      if (s(r[ip]).toLowerCase() !== "prefijado") continue;
+      const lote = s(r[il]).replace(/\.0+$/, "");
+      if (!lote || lote === "0") continue;
+      if (!pref.has(lote) || (f && pref.get(lote).fecha < f)) pref.set(lote, { fecha: f, rama: s(r[ir]), kilos: num(r[ik]) });
+    }
+    return { pref, desde, hasta };
+  }
+
+  function leerMaestro(rows, aviso) {
+    const iH = rows.findIndex((r) => r && r.some((v) => s(v).toLowerCase() === "idref"));
+    const hdr = rows[iH].map((v) => s(v).toLowerCase());
+    const ii = hdr.indexOf("idref"), inom = hdr.indexOf("referencia"), ip = hdr.findIndex((h) => h.includes("prefij"));
+    const ref = new Map();
+    for (const r of rows.slice(iH + 1)) {
+      if (!r || !s(r[ii])) continue;
+      const id = s(r[ii]).replace(/\.0+$/, ""), v = s(r[ip]).toUpperCase(), nom = s(r[inom]);
+      const prev = ref.get(id);
+      if (!prev || (!prev.prefija && v)) ref.set(id, { nombre: nom, prefija: v });
+      else if (prev.prefija && v && prev.prefija !== v) aviso("Maestro en conflicto", `La referencia ${id} aparece dos veces con valores distintos: ${prev.nombre} = ${prev.prefija}, ${nom} = ${v}.`);
+    }
+    return ref;
+  }
+
+  function revisarPrefijado(ordenes, ramas, maestro, hoy, manana, aviso) {
+    const { pref, desde, hasta } = ramas;
+    const pendientes = [];
+    const indef = new Map();
+    let deben = 0, completas = 0;
+    for (const o of ordenes) {
+      if (o.tipo !== "Producción") continue; // reprocesos y devoluciones no se prefijan
+      const lycra = LYCRA.has(o.codigo.slice(0, 3));
+      const info = maestro.get(o.referencia);
+      if (!info || (info.prefija !== "SI" && info.prefija !== "NO")) {
+        const k = o.referencia || "(sin referencia)";
+        if (!indef.has(k)) indef.set(k, { referencia: k, nombre: info ? info.nombre : "", cliente: o.cliente, lycra: false, ordenes: [], primera: o.inicio });
+        const x = indef.get(k);
+        x.ordenes.push(o.orden);
+        x.lycra = x.lycra || lycra;
+        if (o.inicio < x.primera) x.primera = o.inicio;
+        continue;
+      }
+      if (!lycra || info.prefija !== "SI") continue;
+      deben++;
+      const lotes = o.lotes.split(/[-\s]+/).filter((x) => /^\d+$/.test(x));
+      // Regla: basta con que un lote de la orden esté prefijado (los complementos —cuellos, puños, rib— no se prefijan).
+      if (lotes.some((l) => pref.has(l))) { completas++; continue; }
+      const faltan = lotes;
+      const dk = dayKey(o.inicio);
+      pendientes.push({ orden: o.orden, tipo: o.tipo, subtipo: o.subtipo, estado: o.estado, inicio: o.inicio, maquina: o.maquina,
+        cliente: o.cliente, referencia: o.referencia, refNombre: info.nombre, peso: o.peso, lotes, faltan,
+        cuando: o.estado === "Start" ? "maquina" : dk <= hoy ? "hoy" : dk === manana ? "manana" : "despues" });
+    }
+    pendientes.sort((a, b) => a.inicio - b.inicio);
+    const sinMaestro = [...indef.values()].sort((a, b) => b.lycra - a.lycra || a.primera - b.primera);
+    return { pendientes, deben, completas, desde, hasta, sinMaestro };
+  }
+
+  function calcular(files) {
+    for (const k of Object.keys(SLOTS)) if (!files[k] && !OPCIONALES.has(k)) throw new Error(`Falta el archivo: ${SLOTS[k]}.`);
+    const ordenes = leerTreepoint(files.treepoint);
+    const plan = leerMovimientos(files.planificado);
+    const pes = leerMovimientos(files.pesado);
+    const bodegas = { kardex: leerKardex(files.kardex), consignacion: leerKardex(files.consignacion), especiales: leerKardex(files.especiales) };
+    const T = new Map(ordenes.map((o) => [o.orden, o]));
+    let corte = null;
+    for (const m of plan.concat(pes)) if (!corte || m.fecha > corte) corte = m.fecha;
+    const hoyD = corte || new Date();
+    const hoy = dayKey(hoyD);
+    const manD = new Date(hoyD.getFullYear(), hoyD.getMonth(), hoyD.getDate() + 1);
+    const manana = dayKey(manD);
+    const avisos = [];
+    const aviso = (tipo, texto) => avisos.push({ tipo, texto });
+
+    // Inventario
+    const nombres = {}, stock = {}, det = {};
+    for (const [b, inv] of Object.entries(bodegas)) {
+      for (const [c, d] of Object.entries(inv)) {
+        stock[c] = (stock[c] || 0) + d.kg;
+        (det[c] = det[c] || {})[b] = d.kg;
+        nombres[c] = d.nombre;
+        if (d.kg < 0) aviso("Existencia negativa", `${c} ${d.nombre}: ${fmt(d.kg, 3)} kg en ${SLOTS[b]}. Hay que corregir el kardex.`);
+      }
+    }
+    for (const m of plan.concat(pes)) if (!nombres[m.code]) nombres[m.code] = m.nombre;
+
+    // Pesado = comprometido hasta finalizar
+    const comp = {}, pesadas = new Map();
+    for (const m of pes) {
+      comp[m.code] = (comp[m.code] || 0) + m.kg;
+      if (!pesadas.has(m.orden)) pesadas.set(m.orden, []);
+      pesadas.get(m.orden).push(m);
+    }
+    for (const [o, ms] of pesadas) {
+      const f = new Date(Math.min(...ms.map((m) => m.fecha)));
+      if ((hoyD - f) / 864e5 > DIAS_PESADO_VIEJO) {
+        const ent = T.has(o) ? `entra ${fmtFecha(T.get(o).inicio)}` : "no está en la programación";
+        aviso("Pesado hace mucho", `${o} se pesó el ${fmtDia(f)} y no ha finalizado (${ent}). Ese producto sigue reservado.`);
+      }
+      if (!T.has(o)) aviso("Pesada sin programar", `${o} está pesada pero ya no aparece en la programación. ¿Finalizó y falta descargarla en Kardex?`);
+    }
+
+    // Planificado
+    const planif = new Map();
+    for (const m of plan) {
+      if (!planif.has(m.orden)) planif.set(m.orden, []);
+      planif.get(m.orden).push(m);
+    }
+    for (const [o, ms] of planif) {
+      if (!T.has(o)) aviso("Planificada sin programar", `${o} tiene fórmula planificada pero no está en la programación.`);
+      const porFecha = new Map();
+      for (const m of ms) { const k = +m.fecha; if (!porFecha.has(k)) porFecha.set(k, new Set()); porFecha.get(k).add(m.code); }
+      const juegos = [...porFecha.values()];
+      let dup = false;
+      for (let i = 0; i < juegos.length && !dup; i++)
+        for (let j = i + 1; j < juegos.length && !dup; j++)
+          if ([...juegos[i]].filter((c) => juegos[j].has(c)).length >= 3) dup = true;
+      if (dup) aviso("Posible doble registro", `${o}: los mismos productos aparecen en ${juegos.length} registros de fórmula. Se están sumando; revisar con el formulador.`);
+      if (T.has(o) && T.get(o).estado === "Start") aviso("En máquina sin pesar", `${o} está en máquina pero su fórmula sigue en planificado.`);
+    }
+
+    for (const o of ordenes) {
+      o.formula = pesadas.has(o.orden) ? "Pesada" : planif.has(o.orden) ? "Planificada" : (o.tipo === "Producción" || o.tipo === "Reproceso") ? "Sin fórmula" : "—";
+      if (o.formula === "Sin fórmula") aviso("Sin fórmula", `${o.orden} (${o.subtipo}, entra ${fmtFecha(o.inicio)}) no está ni en planificado ni en pesado.`);
+    }
+
+    // Consumo acumulado en orden de entrada
+    const disp = {};
+    for (const c of new Set([...Object.keys(stock), ...Object.keys(comp)])) disp[c] = (stock[c] || 0) - (comp[c] || 0);
+    const eventos = [];
+    for (const [o, ms] of planif) if (T.has(o)) for (const m of ms) eventos.push([T.get(o).inicio, o, m]);
+    eventos.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+    const acum = {}, afect = {};
+    for (const [, o, m] of eventos) {
+      const c = m.code, antes = acum[c] || 0;
+      acum[c] = antes + m.kg;
+      const d = disp[c] || 0;
+      if (acum[c] > d + 1e-9) {
+        afect[c] = afect[c] || {};
+        afect[c][o] = (afect[c][o] || 0) + acum[c] - Math.max(antes, d);
+      }
+    }
+    const faltantes = Object.entries(afect).map(([c, ords]) => {
+      const lista = Object.keys(ords).sort((a, b) => T.get(a).inicio - T.get(b).inicio);
+      const p = T.get(lista[0]);
+      const d = disp[c] || 0;
+      return { code: c, nombre: nombres[c] || "", clase: c.startsWith("C") ? "Colorante" : "Químico",
+        kardex: det[c]?.kardex || 0, consignacion: det[c]?.consignacion || 0, especiales: det[c]?.especiales || 0,
+        pesado: comp[c] || 0, disponible: d, necesita: acum[c], falta: acum[c] - Math.max(d, 0),
+        primera: p.orden, entra: p.inicio, maquina: p.maquina, cliente: p.cliente, nOrdenes: lista.length,
+        ordenes: lista.map((o) => ({ orden: o, entra: T.get(o).inicio, maquina: T.get(o).maquina, falta: ords[o] })) };
+    }).sort((a, b) => a.entra - b.entra);
+    for (const f of faltantes) f.cuando = dayKey(f.entra) <= hoy ? "hoy" : dayKey(f.entra) === manana ? "manana" : "despues";
+
+    // Resumen
+    const grupo = (lista) => {
+      const g = { n: lista.length, prod: { n: 0, kg: 0 }, rep: { n: 0, kg: 0, sub: {} }, lav: { n: 0 }, man: { n: 0, kg: 0 } };
+      for (const o of lista) {
+        if (o.tipo === "Producción") { g.prod.n++; g.prod.kg += o.peso; }
+        else if (o.tipo === "Reproceso") {
+          g.rep.n++; g.rep.kg += o.peso;
+          const sb = (g.rep.sub[o.subtipo] = g.rep.sub[o.subtipo] || { n: 0, kg: 0 });
+          sb.n++; sb.kg += o.peso;
+        } else if (o.tipo === "Lavado") g.lav.n++;
+        else { g.man.n++; g.man.kg += o.peso; }
+      }
+      return g;
+    };
+    const planned = ordenes.filter((o) => o.estado === "Planned");
+    const eff = (o) => (dayKey(o.inicio) <= hoy ? hoy : dayKey(o.inicio));
+    const dias = [...new Set(planned.map(eff))].sort();
+    const ini = planned.length ? dayKey(new Date(Math.min(...planned.map((o) => o.inicio)))) : hoy;
+    const fin = planned.length ? dayKey(new Date(Math.max(...planned.map((o) => o.inicio)))) : hoy;
+    const resumen = {
+      enMaquina: grupo(ordenes.filter((o) => o.estado === "Start")),
+      hoy: grupo(planned.filter((o) => dayKey(o.inicio) <= hoy)),
+      manana: grupo(planned.filter((o) => dayKey(o.inicio) === manana)),
+      semana: grupo(planned),
+      porDia: dias.map((d) => ({ dia: d, ...grupo(planned.filter((o) => eff(o) === d)) })),
+      desde: ini, hasta: fin,
+    };
+
+    const prefijado = files.ramas && files.maestro
+      ? revisarPrefijado(ordenes, leerRamas(files.ramas), leerMaestro(files.maestro, aviso), hoy, manana, aviso)
+      : null;
+
+    return { hoy, manana, corte, resumen, faltantes, avisos, prefijado,
+      conteo: { ordenes: ordenes.length, planificadas: planif.size, pesadas: pesadas.size, productos: Object.keys(stock).length } };
+  }
+
+  const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const DIA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  function fmt(n, dec = 0) { return Number(n).toLocaleString("es-CO", { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+  function fmtDia(d) { return `${pad(d.getDate())}-${MES[d.getMonth()]}-${d.getFullYear()}`; }
+  function fmtFecha(d) { return `${DIA[d.getDay()]} ${pad(d.getDate())}-${MES[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+  function fmtKey(k, conDia = true) { const [y, m, d] = k.split("-").map(Number); const D = new Date(y, m - 1, d); return `${conDia ? DIA[D.getDay()] + " " : ""}${d}-${MES[m - 1]}`; }
+
+  return { SLOTS, OPCIONALES, identify, calcular, fmt, fmtFecha, fmtKey, fmtDia };
+})();
+if (typeof module !== "undefined") module.exports = Logic;
+
+</script>
+<script>
+const SAMPLE = null;
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const L = Logic;
+  const loaded = {};   // slot -> {name, modified, rows}
+  let ultimo = null;   // último resultado mostrado
+
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const kg = (v) => { const a = Math.abs(v); if (a < 1) return `${L.fmt(v * 1000, 0)} g`; return `${L.fmt(v, a >= 100 ? 0 : 2)} kg`; };
+  const kgEnt = (v) => `${L.fmt(v, 0)} kg`;
+  const plural = (n, a, b) => `${L.fmt(n)} ${n === 1 ? a : b}`;
+
+  function revive(o) {
+    return JSON.parse(JSON.stringify(o), (k, v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(v) ? new Date(v) : v));
+  }
+
+  function renderSlots() {
+    $("slots").innerHTML = Object.entries(L.SLOTS).map(([k, label]) => {
+      const f = loaded[k];
+      const opt = L.OPCIONALES.has(k);
+      const sub = f ? `${f.guardado ? "Guardado · " : ""}${esc(f.name)} · ${f.modified ? L.fmtFecha(f.modified) : ""}` : opt ? "Pendiente · necesario para prefijado" : "Pendiente";
+      return `<div class="slot ${f ? "ok" : ""} ${opt ? "opt" : ""}"><i class="dot"></i><b>${label}</b><span title="${f ? esc(f.name) : ""}">${sub}</span></div>`;
+    }).join("");
+  }
+
+  function setMsg(text, cls = "") { $("msg").className = "msg " + cls; $("msg").textContent = text; }
+
+  async function handle(fileList) {
+    if (typeof XLSX === "undefined") { setMsg("No cargó el lector de Excel. Revisa la conexión a internet y recarga la página.", "err"); return; }
+    const problemas = [];
+    for (const file of fileList) {
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+        const k = L.identify(rows);
+        if (!k) { problemas.push(`No reconozco "${file.name}".`); continue; }
+        loaded[k] = { name: file.name, modified: file.lastModified ? new Date(file.lastModified) : null, rows };
+      } catch (e) {
+        problemas.push(`No pude leer "${file.name}". Si es .xls, ábrelo en Excel y guárdalo como .xlsx.`);
+      }
+    }
+    renderSlots();
+    const faltan = Object.keys(L.SLOTS).filter((k) => !loaded[k] && !L.OPCIONALES.has(k));
+    if (faltan.length) { setMsg([...problemas, `Faltan: ${faltan.map((k) => L.SLOTS[k]).join(", ")}.`].join(" "), problemas.length ? "err" : ""); return; }
+    const fechas = Object.entries(loaded).filter(([k, f]) => k !== "maestro" && !f.guardado).map(([, f]) => f.modified).filter(Boolean);
+    const spread = fechas.length ? (Math.max(...fechas) - Math.min(...fechas)) / 6e4 : 0;
+    try {
+      const files = Object.fromEntries(Object.entries(loaded).map(([k, f]) => [k, f.rows]));
+      const R = L.calcular(files);
+      const avisoDesfase = spread > 60 ? `Ojo: entre el archivo más viejo y el más nuevo hay ${L.fmt(spread / 60, 1)} horas. Los cruces pueden fallar si no se descargaron al mismo tiempo.` : "";
+      const sinPref = ["ramas", "maestro"].filter((k) => !loaded[k]).map((k) => L.SLOTS[k]);
+      const nota = sinPref.length ? `Informe calculado sin prefijado (falta: ${sinPref.join(", ")}).` : "Archivos completos. Informe calculado.";
+      setMsg([...problemas, avisoDesfase || nota].join(" "), problemas.length || avisoDesfase ? "warn" : "");
+      render(R, false);
+    } catch (e) {
+      setMsg(e.message, "err");
+    }
+  }
+
+  function periodo(titulo, sub, g, cls = "") {
+    const reps = Object.entries(g.rep.sub).sort((a, b) => b[1].kg - a[1].kg)
+      .map(([n, x]) => `<li>${esc(n)}: ${plural(x.n, "orden", "órdenes")}, ${kgEnt(x.kg)}</li>`).join("");
+    const extra = [g.lav.n ? plural(g.lav.n, "lavado", "lavados") : "", g.man.n ? `${plural(g.man.n, "programado manual", "programados manuales")} (${kgEnt(g.man.kg)})` : ""].filter(Boolean).join(" y ");
+    return `<div class="period ${cls}">
+      <div><div class="eyebrow">${sub}</div><h3>${titulo}</h3></div>
+      <div class="figs">
+        <div class="fig"><div class="v">${kgEnt(g.prod.kg)}</div><div class="l">efectivos · ${plural(g.prod.n, "orden", "órdenes")}</div></div>
+        <div class="fig"><div class="v">${kgEnt(g.rep.kg)}</div><div class="l">reproceso · ${plural(g.rep.n, "orden", "órdenes")}</div></div>
+      </div>
+      ${reps ? `<ul>${reps}</ul>` : ""}
+      ${extra ? `<p class="muted">Además: ${extra}.</p>` : ""}
+    </div>`;
+  }
+
+  function textoResumen(R) {
+    const r = R.resumen, h = r.hoy, sm = r.semana;
+    const pct = (g) => { const t = g.prod.kg + g.rep.kg; return t ? Math.round((g.rep.kg / t) * 100) : 0; };
+    return `Hoy (${L.fmtKey(R.hoy)}) quedan por entrar a máquina ${kgEnt(h.prod.kg)} de producción efectiva en ${plural(h.prod.n, "orden", "órdenes")} y ${kgEnt(h.rep.kg)} de reproceso en ${plural(h.rep.n, "orden", "órdenes")}. ` +
+      `En toda la programación, hasta el ${L.fmtKey(r.hasta)}, hay ${kgEnt(sm.prod.kg)} efectivos y ${kgEnt(sm.rep.kg)} de reproceso; el reproceso es el ${pct(sm)} % de los kilos.`;
+  }
+
+  function filaFaltante(f) {
+    const ords = f.ordenes.map((o) => `<tr><td class="mono">${esc(o.orden)}</td><td>${esc(o.maquina)}</td><td>${L.fmtFecha(o.entra)}</td><td>${kg(o.falta)}</td></tr>`).join("");
+    const neg = f.disponible < 0 ? ` <span class="chip">existencia negativa</span>` : "";
+    return `<div class="short ${f.cuando}">
+      <div class="short-top">
+        <h3>${esc(f.nombre)} <span class="mono muted">${esc(f.code)}</span><span class="chip">${f.clase}</span></h3>
+        <span class="falta num">Faltan ${kg(f.falta)}</span>
+      </div>
+      <div class="facts num">
+        <span>Primera orden sin cubrir: <b class="mono">${esc(f.primera)}</b>, máquina <b>${esc(f.maquina)}</b>, entra <b>${L.fmtFecha(f.entra)}</b></span>
+      </div>
+      <div class="facts num">
+        <span>Disponible <b>${kg(f.disponible)}</b>${neg}</span><span>Necesita la programación <b>${kg(f.necesita)}</b></span><span>${plural(f.nOrdenes, "orden afectada", "órdenes afectadas")}</span>
+      </div>
+      <details><summary>Ver bodegas y órdenes</summary><div class="inner">
+        <p class="note num">Kardex ${kg(f.kardex)} + Consignación ${kg(f.consignacion)} + Especiales ${kg(f.especiales)} − Pesado sin finalizar ${kg(f.pesado)} = Disponible ${kg(f.disponible)}</p>
+        <table><thead><tr><th>Orden</th><th>Máquina</th><th>Entra</th><th>Le falta</th></tr></thead><tbody>${ords}</tbody></table>
+      </div></details>
+    </div>`;
+  }
+
+  function seccionPrefijado(R) {
+    const P = R.prefijado;
+    if (!P) return `<section><div class="sec-h"><h2>Prefijado</h2></div><p class="note">Sube el seguimiento de ramas del ERP y el maestro de referencias para revisar qué órdenes faltan por prefijar.</p></section>`;
+    const grupos = [["maquina", "Ya en máquina", "Entró sin prefijar"], ["hoy", "Para hoy", "Prefijar ya"], ["manana", "Para mañana", "Programar en ramas hoy"], ["despues", "Siguientes días", "Planear"]];
+    const fila = (p) => `<tr><td>${L.fmtFecha(p.inicio)}</td><td class="mono">${esc(p.orden)}</td><td>${esc(p.maquina)}</td><td>${esc(p.subtipo)}</td><td>${esc(p.cliente)}</td><td>${esc(p.refNombre || p.referencia)} <span class="muted mono">${esc(p.referencia)}</span></td><td class="mono"><b>${p.faltan.map(esc).join(", ")}</b></td><td>${kgEnt(p.peso)}</td></tr>`;
+    const cuerpo = P.pendientes.length ? grupos.map(([k, t, sub]) => {
+      const xs = P.pendientes.filter((p) => p.cuando === k);
+      if (!xs.length) return "";
+      const cls = k === "maquina" || k === "hoy" ? "hoy" : k;
+      return `<div class="group"><div class="group-h"><span class="pill ${cls}">${t}</span><span class="muted">${sub} · ${plural(xs.length, "orden", "órdenes")}</span></div>
+        <div class="tablewrap"><table class="pref"><thead><tr><th>Entra</th><th>Orden</th><th>Máquina</th><th>Tipo</th><th>Cliente</th><th>Referencia</th><th>Lotes (ninguno prefijado)</th><th>Kg</th></tr></thead><tbody>${xs.map(fila).join("")}</tbody></table></div></div>`;
+    }).join("") : `<div class="empty">Todas las órdenes que deben prefijarse ya están prefijadas.</div>`;
+    const sm = P.sinMaestro || [];
+    const bloqueMaestro = sm.length ? `<div class="group"><div class="group-h"><span class="pill manana">Agregar al maestro</span><span class="muted">${plural(sm.length, "referencia", "referencias")} de la programación sin SI/NO en el maestro</span></div>
+      <div class="tablewrap"><table class="pref"><thead><tr><th>Referencia</th><th>Nombre</th><th>Cliente</th><th>Lleva Lycra</th><th>Primera entrada</th><th>Órdenes</th></tr></thead><tbody>${sm.map((x) => `<tr><td class="mono"><b>${esc(x.referencia)}</b></td><td>${esc(x.nombre || "No está en el maestro")}</td><td>${esc(x.cliente)}</td><td>${x.lycra ? "<b>Sí</b>" : "No"}</td><td>${L.fmtFecha(x.primera)}</td><td class="mono">${x.ordenes.map(esc).join(", ")}</td></tr>`).join("")}</tbody></table></div>
+      <p class="note">Las que llevan Lycra van primero: mientras no estén en el maestro, la página no puede saber si deben prefijarse.</p></div>` : "";
+    return `<section>
+      <div class="sec-h"><h2>Prefijado pendiente</h2><span class="muted">${plural(P.deben, "orden debe", "órdenes deben")} prefijarse · ${L.fmt(P.completas)} listas · ${L.fmt(P.pendientes.length)} pendientes</span></div>
+      ${cuerpo}
+      ${bloqueMaestro}
+      <p class="note">Debe prefijarse la orden de producción (PP) cuya tela lleva Lycra y cuya referencia dice SI en el maestro. Basta con que uno de sus lotes esté prefijado, porque los complementos (cuellos, puños, rib) no se prefijan. Los reprocesos no se prefijan. Un lote cuenta como prefijado si aparece con proceso Prefijado en el seguimiento de ramas (${L.fmtDia(P.desde)} a ${L.fmtDia(P.hasta)}).</p>
+    </section>`;
+  }
+
+  function inicio() {
+    if (SAMPLE) { render(revive(SAMPLE), true); return; }
+    ultimo = null;
+    $("banner").innerHTML = "";
+    $("out").innerHTML = `<section><h2>Así se ve el informe</h2>
+      <div class="periods">
+        <div class="period"><div class="eyebrow">1 · Resumen</div><p>Kilos efectivos y de reproceso de hoy, mañana, lo que está en máquina y toda la programación, con el detalle por día.</p></div>
+        <div class="period"><div class="eyebrow">2 · Prefijado</div><p>Órdenes de producción con Lycra que deben prefijarse y no tienen ningún lote prefijado, y referencias por agregar al maestro.</p></div>
+        <div class="period"><div class="eyebrow">3 · Producto</div><p>Químicos y colorantes que no alcanzan, desde la primera orden que se queda sin producto.</p></div>
+        <div class="period"><div class="eyebrow">4 · Datos</div><p>Existencias negativas, pesados viejos, fórmulas duplicadas y otros datos para corregir.</p></div>
+      </div>
+      <p class="note">Sube los 6 archivos de Treepoint y Vibrax para calcular. El seguimiento de ramas y el maestro de referencias activan la revisión de prefijado.</p></section>`;
+  }
+
+  function render(R, esEjemplo) {
+    ultimo = R;
+    $("banner").innerHTML = esEjemplo
+      ? `<div class="banner sample"><span><b>Ejemplo</b> con los archivos del ${L.fmtKey(R.hoy)}. Sube los de hoy para calcular el informe actual.</span></div>`
+      : `<div class="banner"><span>Informe de <b>${L.fmtKey(R.hoy)}</b> · datos de Vibrax hasta ${L.fmtFecha(R.corte)} · ${L.fmt(R.conteo.ordenes)} órdenes en la programación</span></div>`;
+    const r = R.resumen;
+    const filasDia = r.porDia.map((d) => {
+      const t = d.prod.kg + d.rep.kg, p = t ? d.rep.kg / t : 0;
+      return `<tr><td>${L.fmtKey(d.dia)}${d.dia === R.hoy ? " (hoy)" : ""}</td><td>${d.prod.n}</td><td>${kgEnt(d.prod.kg)}</td><td>${d.rep.n}</td><td>${kgEnt(d.rep.kg)}</td><td><span class="bar" style="width:${Math.round(p * 40)}px"></span>${Math.round(p * 100)} %</td><td>${d.lav.n || ""}</td><td>${d.man.n || ""}</td></tr>`;
+    }).join("");
+    const sm = r.semana, ts = sm.prod.kg + sm.rep.kg;
+    const grupos = [["hoy", "Para hoy", "Hay que resolverlo ya"], ["manana", "Para mañana", "Hay tiempo de pedir hoy"], ["despues", "Siguientes días", "Planear la compra"]];
+    const falt = R.faltantes.length
+      ? grupos.map(([k, t, s]) => { const fs = R.faltantes.filter((f) => f.cuando === k); return fs.length ? `<div class="group"><div class="group-h"><span class="pill ${k}">${t}</span><span class="muted">${s} · ${plural(fs.length, "producto", "productos")}</span></div>${fs.map(filaFaltante).join("")}</div>` : ""; }).join("")
+      : `<div class="empty">Todo el producto alcanza para la programación.</div>`;
+    const porTipo = {};
+    for (const a of R.avisos) (porTipo[a.tipo] = porTipo[a.tipo] || []).push(a.texto);
+    const avisos = Object.entries(porTipo).map(([t, xs]) => `<details class="aviso"><summary><b>${esc(t)}</b><span class="count">${xs.length}</span></summary><ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>`).join("");
+
+    $("out").innerHTML = `
+      <section>
+        <div class="sec-h"><h2>Resumen de la programación</h2><span class="muted">Kilos efectivos = producción (PP) · Reproceso = órdenes R y D</span></div>
+        <p class="lead">${textoResumen(R)}</p>
+        <div class="periods">
+          ${periodo(`Hoy, ${L.fmtKey(R.hoy)}`, "Por entrar a máquina", r.hoy, "today")}
+          ${periodo(`Mañana, ${L.fmtKey(R.manana)}`, "Planificado", r.manana)}
+          ${periodo("En máquina ahora", "Estado Start", r.enMaquina)}
+          ${periodo(`Hasta el ${L.fmtKey(r.hasta)}`, "Toda la programación pendiente", r.semana)}
+        </div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Día de entrada</th><th>Órdenes PP</th><th>Kg efectivos</th><th>Órdenes rep.</th><th>Kg reproceso</th><th>% reproceso</th><th>Lavados</th><th>Manual</th></tr></thead>
+          <tbody>${filasDia}</tbody>
+          <tfoot><tr><td>Total pendiente</td><td>${sm.prod.n}</td><td>${kgEnt(sm.prod.kg)}</td><td>${sm.rep.n}</td><td>${kgEnt(sm.rep.kg)}</td><td>${ts ? Math.round((sm.rep.kg / ts) * 100) : 0} %</td><td>${sm.lav.n}</td><td>${sm.man.n}</td></tr></tfoot>
+        </table></div>
+        <p class="note">Las órdenes planificadas con hora de entrada ya pasada se cuentan en hoy. Las que están en máquina (Start) van aparte.</p>
+      </section>
+      ${seccionPrefijado(R)}
+      <section>
+        <div class="sec-h"><h2>Producto que no alcanza</h2><span class="muted">${plural(R.faltantes.length, "producto", "productos")} · químicos y colorantes</span></div>
+        ${falt}
+        <p class="note">Disponible = Kardex + Consignación + Especiales − lo pesado que no ha finalizado. El consumo se acumula en el orden en que las órdenes entran a máquina, según la fórmula planificada en Vibrax. Si el formulador cambió un producto, el cambio solo aparece al pesar.</p>
+      </section>
+      <section>
+        <div class="sec-h"><h2>Datos para revisar</h2><span class="muted">${plural(R.avisos.length, "aviso", "avisos")}</span></div>
+        <div class="avisos">${avisos || '<div class="empty">Sin avisos.</div>'}</div>
+      </section>`;
+  }
+
+  function textoPlano(R) {
+    const r = R.resumen, lin = [`REVISIÓN DE PLANIFICACIÓN · ${L.fmtKey(R.hoy)}`, "", textoResumen(R), ""];
+    const g = (t, x) => lin.push(`${t}: ${kgEnt(x.prod.kg)} efectivos (${x.prod.n} órd.) · ${kgEnt(x.rep.kg)} reproceso (${x.rep.n} órd.)`);
+    g("Hoy por entrar", r.hoy); g("Mañana", r.manana); g("En máquina", r.enMaquina);
+    if (R.prefijado) {
+      lin.push("", "PREFIJADO PENDIENTE");
+      const urg = R.prefijado.pendientes.filter((p) => p.cuando !== "despues");
+      if (!R.prefijado.pendientes.length) lin.push("Todo prefijado.");
+      for (const p of urg) lin.push(`- ${p.orden} (${p.maquina}, ${L.fmtFecha(p.inicio)}): lotes ${p.faltan.join(", ")}`);
+      const resto = R.prefijado.pendientes.length - urg.length;
+      if (resto) lin.push(`- Y ${resto} órdenes más de los siguientes días.`);
+      const sm = R.prefijado.sinMaestro || [];
+      if (sm.length) lin.push(`- ${sm.length} referencias por agregar al maestro: ${sm.map((x) => x.referencia).join(", ")}.`);
+    }
+    lin.push("", "PRODUCTO QUE NO ALCANZA");
+    if (!R.faltantes.length) lin.push("Todo alcanza.");
+    for (const f of R.faltantes) lin.push(`- ${f.nombre} (${f.code}): faltan ${kg(f.falta)}. Primera orden ${f.primera}, ${f.maquina}, ${L.fmtFecha(f.entra)}.`);
+    return lin.join("\n");
+  }
+
+  $("files").addEventListener("change", (e) => { handle([...e.target.files]); e.target.value = ""; });
+  let depth = 0;
+  window.addEventListener("dragenter", (e) => { e.preventDefault(); depth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; document.body.classList.remove("dragging"); handle([...e.dataTransfer.files]); });
+  $("limpiar").addEventListener("click", () => { for (const k in loaded) delete loaded[k]; renderSlots(); setMsg(""); inicio(); });
+  $("copiar").addEventListener("click", async () => {
+    if (!ultimo) { setMsg("Primero sube los archivos para tener un resumen que copiar."); return; }
+    const t = textoPlano(ultimo);
+    try { await navigator.clipboard.writeText(t); $("copiar").textContent = "Resumen copiado"; }
+    catch { setMsg("No pude copiar automáticamente. Selecciona el texto del resumen y cópialo."); }
+    setTimeout(() => ($("copiar").textContent = "Copiar resumen"), 2000);
+  });
+
+  try { localStorage.removeItem("maestro"); } catch {}
+  renderSlots();
+  inicio();
+})();
+</script>
+
+</body>
+</html>
