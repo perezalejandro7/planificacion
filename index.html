@@ -111,6 +111,12 @@ details .inner { margin-top: 8px; overflow-x: auto }
 details table { font-size: 0.85rem }
 details td, details th { padding: 4px 10px }
 .note { font-size: 0.88rem; color: var(--muted); max-width: 75ch; margin: 0 }
+button.mini { font-size: 0.8rem; padding: 3px 9px; border-radius: 6px; white-space: nowrap }
+button.mini.ok { border-color: var(--ok); color: var(--ok) }
+button.mini:disabled { opacity: 0.45; cursor: not-allowed }
+.btns { display: flex; flex-wrap: wrap; gap: 4px }
+tr.sin-cubrir td { background: var(--crit-bg) }
+.validados { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--r); padding: 10px 16px }
 .empty { padding: 14px 16px; border-radius: var(--r); background: var(--ok-bg); color: var(--ok); font-weight: 600 }
 
 /* Avisos */
@@ -322,8 +328,9 @@ const Logic = (() => {
     return ref;
   }
 
-  function revisarPrefijado(ordenes, ramas, maestro, hoy, manana, aviso) {
+  function revisarPrefijado(ordenes, ramas, maestro, hoy, manana, aviso, manuales = {}) {
     const { pref, desde, hasta } = ramas;
+    const marcadas = [];
     const pendientes = [];
     const indef = new Map();
     let deben = 0, completas = 0;
@@ -345,6 +352,9 @@ const Logic = (() => {
       const lotes = o.lotes.split(/[-\s]+/).filter((x) => /^\d+$/.test(x));
       // Regla: basta con que un lote de la orden esté prefijado (los complementos —cuellos, puños, rib— no se prefijan).
       if (lotes.some((l) => pref.has(l))) { completas++; continue; }
+      // Validación manual: el usuario confirmó que un lote ya está prefijado (la rama de madrugada aún no sale en el reporte).
+      const manual = lotes.find((l) => manuales[l]);
+      if (manual) { completas++; marcadas.push({ lote: manual, orden: o.orden, inicio: o.inicio, maquina: o.maquina, marcado: manuales[manual].ts }); continue; }
       const faltan = lotes;
       const dk = dayKey(o.inicio);
       pendientes.push({ orden: o.orden, tipo: o.tipo, subtipo: o.subtipo, estado: o.estado, inicio: o.inicio, maquina: o.maquina,
@@ -353,10 +363,12 @@ const Logic = (() => {
     }
     pendientes.sort((a, b) => a.inicio - b.inicio);
     const sinMaestro = [...indef.values()].sort((a, b) => b.lycra - a.lycra || a.primera - b.primera);
-    return { pendientes, deben, completas, desde, hasta, sinMaestro };
+    marcadas.sort((a, b) => a.inicio - b.inicio);
+    return { pendientes, deben, completas, desde, hasta, sinMaestro, marcadas };
   }
 
-  function calcular(files) {
+  function calcular(files, marcas = {}) {
+    const cambios = marcas.cambios || {};
     for (const k of Object.keys(SLOTS)) if (!files[k] && !OPCIONALES.has(k)) throw new Error(`Falta el archivo: ${SLOTS[k]}.`);
     const ordenes = leerTreepoint(files.treepoint);
     const plan = leerMovimientos(files.planificado);
@@ -428,7 +440,22 @@ const Logic = (() => {
     const disp = {};
     for (const c of new Set([...Object.keys(stock), ...Object.keys(comp)])) disp[c] = (stock[c] || 0) - (comp[c] || 0);
     const eventos = [];
-    for (const [o, ms] of planif) if (T.has(o)) for (const m of ms) eventos.push([T.get(o).inicio, o, m]);
+    // Validación manual: el usuario confirmó que en esta orden el producto ya se cambió (Vibrax planificado conserva la fórmula original).
+    const cambiosAplicados = [];
+    const porProducto = {};
+    for (const [o, ms] of planif) {
+      if (!T.has(o)) continue;
+      for (const m of ms) {
+        const key = `${o}|${m.code}`;
+        if (cambios[key]) {
+          if (!cambiosAplicados.some((x) => x.key === key)) cambiosAplicados.push({ key, orden: o, code: m.code, nombre: m.nombre, inicio: T.get(o).inicio, maquina: T.get(o).maquina, marcado: cambios[key].ts });
+          continue;
+        }
+        eventos.push([T.get(o).inicio, o, m]);
+        (porProducto[m.code] = porProducto[m.code] || {})[o] = (porProducto[m.code][o] || 0) + m.kg;
+      }
+    }
+    cambiosAplicados.sort((a, b) => a.inicio - b.inicio);
     eventos.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
     const acum = {}, afect = {};
     for (const [, o, m] of eventos) {
@@ -448,7 +475,10 @@ const Logic = (() => {
         kardex: det[c]?.kardex || 0, consignacion: det[c]?.consignacion || 0, especiales: det[c]?.especiales || 0,
         pesado: comp[c] || 0, disponible: d, necesita: acum[c], falta: acum[c] - Math.max(d, 0),
         primera: p.orden, entra: p.inicio, maquina: p.maquina, cliente: p.cliente, nOrdenes: lista.length,
-        ordenes: lista.map((o) => ({ orden: o, entra: T.get(o).inicio, maquina: T.get(o).maquina, falta: ords[o] })) };
+        ordenes: lista.map((o) => ({ orden: o, entra: T.get(o).inicio, maquina: T.get(o).maquina, falta: ords[o] })),
+        // Todas las órdenes que aún llevan el producto en la fórmula planificada (para validar cambios).
+        todas: Object.entries(porProducto[c] || {}).map(([o, kg]) => ({ orden: o, entra: T.get(o).inicio, maquina: T.get(o).maquina, kg, falta: ords[o] || 0 }))
+          .sort((a, b) => a.entra - b.entra) };
     }).sort((a, b) => a.entra - b.entra);
     for (const f of faltantes) f.cuando = dayKey(f.entra) <= hoy ? "hoy" : dayKey(f.entra) === manana ? "manana" : "despues";
 
@@ -481,10 +511,10 @@ const Logic = (() => {
     };
 
     const prefijado = files.ramas && files.maestro
-      ? revisarPrefijado(ordenes, leerRamas(files.ramas), leerMaestro(files.maestro, aviso), hoy, manana, aviso)
+      ? revisarPrefijado(ordenes, leerRamas(files.ramas), leerMaestro(files.maestro, aviso), hoy, manana, aviso, marcas.prefijados || {})
       : null;
 
-    return { hoy, manana, corte, resumen, faltantes, avisos, prefijado,
+    return { hoy, manana, corte, resumen, faltantes, avisos, prefijado, cambiosAplicados,
       conteo: { ordenes: ordenes.length, planificadas: planif.size, pesadas: pesadas.size, productos: Object.keys(stock).length } };
   }
 
@@ -507,6 +537,25 @@ const SAMPLE = null;
   const L = Logic;
   const loaded = {};   // slot -> {name, modified, rows}
   let ultimo = null;   // último resultado mostrado
+  let archivos = null; // filas de los archivos cargados, para recalcular al validar
+  let modoEjemplo = true;
+  const DIAS_MARCA = 45;
+  function cargarMarcas() {
+    let m = { prefijados: {}, cambios: {} };
+    try { m = JSON.parse(localStorage.getItem("marcas-v1") || "null") || m; } catch {}
+    m.prefijados = m.prefijados || {}; m.cambios = m.cambios || {};
+    const limite = Date.now() - DIAS_MARCA * 864e5;
+    for (const g of ["prefijados", "cambios"]) for (const k of Object.keys(m[g])) if ((m[g][k].ts || 0) < limite) delete m[g][k];
+    return m;
+  }
+  let marcas = cargarMarcas();
+  function guardarMarcas() { try { localStorage.setItem("marcas-v1", JSON.stringify(marcas)); return true; } catch { return false; } }
+  function recalcular() {
+    if (!archivos) return;
+    const abiertos = [...document.querySelectorAll("details[data-id][open]")].map((d) => d.dataset.id);
+    render(L.calcular(archivos, marcas), false);
+    for (const id of abiertos) { const d = document.querySelector(`details[data-id="${CSS.escape(id)}"]`); if (d) d.open = true; }
+  }
 
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const kg = (v) => { const a = Math.abs(v); if (a < 1) return `${L.fmt(v * 1000, 0)} g`; return `${L.fmt(v, a >= 100 ? 0 : 2)} kg`; };
@@ -550,7 +599,8 @@ const SAMPLE = null;
     const spread = fechas.length ? (Math.max(...fechas) - Math.min(...fechas)) / 6e4 : 0;
     try {
       const files = Object.fromEntries(Object.entries(loaded).map(([k, f]) => [k, f.rows]));
-      const R = L.calcular(files);
+      const R = L.calcular(files, marcas);
+      archivos = files;
       const avisoDesfase = spread > 60 ? `Ojo: entre el archivo más viejo y el más nuevo hay ${L.fmt(spread / 60, 1)} horas. Los cruces pueden fallar si no se descargaron al mismo tiempo.` : "";
       const sinPref = ["ramas", "maestro"].filter((k) => !loaded[k]).map((k) => L.SLOTS[k]);
       const nota = sinPref.length ? `Informe calculado sin prefijado (falta: ${sinPref.join(", ")}).` : "Archivos completos. Informe calculado.";
@@ -584,7 +634,8 @@ const SAMPLE = null;
   }
 
   function filaFaltante(f) {
-    const ords = f.ordenes.map((o) => `<tr><td class="mono">${esc(o.orden)}</td><td>${esc(o.maquina)}</td><td>${L.fmtFecha(o.entra)}</td><td>${kg(o.falta)}</td></tr>`).join("");
+    const dis = modoEjemplo ? " disabled title=\"Sube los archivos para validar\"" : "";
+    const ords = (f.todas || f.ordenes).map((o) => `<tr class="${o.falta > 0 ? "sin-cubrir" : ""}"><td class="mono">${esc(o.orden)}</td><td>${esc(o.maquina)}</td><td>${L.fmtFecha(o.entra)}</td><td>${o.kg !== undefined ? kg(o.kg) : ""}</td><td>${o.falta > 0 ? kg(o.falta) : "—"}</td><td><button type="button" class="mini" data-act="cambio" data-key="${esc(o.orden + "|" + f.code)}" data-nombre="${esc(f.nombre)}"${dis}>Ya se cambió</button></td></tr>`).join("");
     const neg = f.disponible < 0 ? ` <span class="chip">existencia negativa</span>` : "";
     return `<div class="short ${f.cuando}">
       <div class="short-top">
@@ -597,9 +648,10 @@ const SAMPLE = null;
       <div class="facts num">
         <span>Disponible <b>${kg(f.disponible)}</b>${neg}</span><span>Necesita la programación <b>${kg(f.necesita)}</b></span><span>${plural(f.nOrdenes, "orden afectada", "órdenes afectadas")}</span>
       </div>
-      <details><summary>Ver bodegas y órdenes</summary><div class="inner">
+      <details data-id="f-${esc(f.code)}"><summary>Ver bodegas y órdenes</summary><div class="inner">
         <p class="note num">Kardex ${kg(f.kardex)} + Consignación ${kg(f.consignacion)} + Especiales ${kg(f.especiales)} − Pesado sin finalizar ${kg(f.pesado)} = Disponible ${kg(f.disponible)}</p>
-        <table><thead><tr><th>Orden</th><th>Máquina</th><th>Entra</th><th>Le falta</th></tr></thead><tbody>${ords}</tbody></table>
+        <p class="note">Órdenes que aún llevan ${esc(f.nombre)} en la fórmula planificada. En rojo, las que se quedan sin producto. Si en una orden ya cambiaste el producto, pulsa <b>Ya se cambió</b>: deja de contar aquí y en los informes de los días siguientes.</p>
+        <table><thead><tr><th>Orden</th><th>Máquina</th><th>Entra</th><th>Lleva</th><th>Le falta</th><th>Validar</th></tr></thead><tbody>${ords}</tbody></table>
       </div></details>
     </div>`;
   }
@@ -608,13 +660,13 @@ const SAMPLE = null;
     const P = R.prefijado;
     if (!P) return `<section><div class="sec-h"><h2>Prefijado</h2></div><p class="note">Sube el seguimiento de ramas del ERP y el maestro de referencias para revisar qué órdenes faltan por prefijar.</p></section>`;
     const grupos = [["maquina", "Ya en máquina", "Entró sin prefijar"], ["hoy", "Para hoy", "Prefijar ya"], ["manana", "Para mañana", "Programar en ramas hoy"], ["despues", "Siguientes días", "Planear"]];
-    const fila = (p) => `<tr><td>${L.fmtFecha(p.inicio)}</td><td class="mono">${esc(p.orden)}</td><td>${esc(p.maquina)}</td><td>${esc(p.subtipo)}</td><td>${esc(p.cliente)}</td><td>${esc(p.refNombre || p.referencia)} <span class="muted mono">${esc(p.referencia)}</span></td><td class="mono"><b>${p.faltan.map(esc).join(", ")}</b></td><td>${kgEnt(p.peso)}</td></tr>`;
+    const fila = (p) => `<tr><td>${L.fmtFecha(p.inicio)}</td><td class="mono">${esc(p.orden)}</td><td>${esc(p.maquina)}</td><td>${esc(p.subtipo)}</td><td>${esc(p.cliente)}</td><td>${esc(p.refNombre || p.referencia)} <span class="muted mono">${esc(p.referencia)}</span></td><td class="mono"><b>${p.faltan.map(esc).join(", ")}</b></td><td>${kgEnt(p.peso)}</td><td><div class="btns">${p.faltan.map((l) => `<button type="button" class="mini" data-act="pref" data-lote="${esc(l)}" data-orden="${esc(p.orden)}"${modoEjemplo ? " disabled title=\"Sube los archivos para validar\"" : ""}>Ya prefijado ${esc(l)}</button>`).join("")}</div></td></tr>`;
     const cuerpo = P.pendientes.length ? grupos.map(([k, t, sub]) => {
       const xs = P.pendientes.filter((p) => p.cuando === k);
       if (!xs.length) return "";
       const cls = k === "maquina" || k === "hoy" ? "hoy" : k;
       return `<div class="group"><div class="group-h"><span class="pill ${cls}">${t}</span><span class="muted">${sub} · ${plural(xs.length, "orden", "órdenes")}</span></div>
-        <div class="tablewrap"><table class="pref"><thead><tr><th>Entra</th><th>Orden</th><th>Máquina</th><th>Tipo</th><th>Cliente</th><th>Referencia</th><th>Lotes (ninguno prefijado)</th><th>Kg</th></tr></thead><tbody>${xs.map(fila).join("")}</tbody></table></div></div>`;
+        <div class="tablewrap"><table class="pref"><thead><tr><th>Entra</th><th>Orden</th><th>Máquina</th><th>Tipo</th><th>Cliente</th><th>Referencia</th><th>Lotes (ninguno prefijado)</th><th>Kg</th><th>Validar</th></tr></thead><tbody>${xs.map(fila).join("")}</tbody></table></div></div>`;
     }).join("") : `<div class="empty">Todas las órdenes que deben prefijarse ya están prefijadas.</div>`;
     const sm = P.sinMaestro || [];
     const bloqueMaestro = sm.length ? `<div class="group"><div class="group-h"><span class="pill manana">Agregar al maestro</span><span class="muted">${plural(sm.length, "referencia", "referencias")} de la programación sin SI/NO en el maestro</span></div>
@@ -623,8 +675,9 @@ const SAMPLE = null;
     return `<section>
       <div class="sec-h"><h2>Prefijado pendiente</h2><span class="muted">${plural(P.deben, "orden debe", "órdenes deben")} prefijarse · ${L.fmt(P.completas)} listas · ${L.fmt(P.pendientes.length)} pendientes</span></div>
       ${cuerpo}
+      ${(P.marcadas || []).length ? `<details class="validados" data-id="val-pref"><summary>Lotes validados a mano como prefijados (${P.marcadas.length})</summary><div class="inner"><table class="pref"><thead><tr><th>Lote</th><th>Orden</th><th>Máquina</th><th>Entra</th><th>Validado</th><th></th></tr></thead><tbody>${P.marcadas.map((m) => `<tr><td class="mono"><b>${esc(m.lote)}</b></td><td class="mono">${esc(m.orden)}</td><td>${esc(m.maquina)}</td><td>${L.fmtFecha(m.inicio)}</td><td>${L.fmtFecha(new Date(m.marcado))}</td><td><button type="button" class="mini" data-act="unpref" data-lote="${esc(m.lote)}">Deshacer</button></td></tr>`).join("")}</tbody></table></div></details>` : ""}
       ${bloqueMaestro}
-      <p class="note">Debe prefijarse la orden de producción (PP) cuya tela lleva Lycra y cuya referencia dice SI en el maestro. Basta con que uno de sus lotes esté prefijado, porque los complementos (cuellos, puños, rib) no se prefijan. Los reprocesos no se prefijan. Un lote cuenta como prefijado si aparece con proceso Prefijado en el seguimiento de ramas (${L.fmtDia(P.desde)} a ${L.fmtDia(P.hasta)}).</p>
+      <p class="note">Debe prefijarse la orden de producción (PP) cuya tela lleva Lycra y cuya referencia dice SI en el maestro. Basta con que uno de sus lotes esté prefijado, porque los complementos (cuellos, puños, rib) no se prefijan. Los reprocesos no se prefijan. Un lote cuenta como prefijado si aparece con proceso Prefijado en el seguimiento de ramas (${L.fmtDia(P.desde)} a ${L.fmtDia(P.hasta)}) o si lo validaste a mano con <b>Ya prefijado</b>, por ejemplo cuando se prefijó en la madrugada y todavía no sale en el reporte. Las validaciones se guardan en este navegador durante ${DIAS_MARCA} días.</p>
     </section>`;
   }
 
@@ -644,6 +697,7 @@ const SAMPLE = null;
 
   function render(R, esEjemplo) {
     ultimo = R;
+    modoEjemplo = esEjemplo;
     $("banner").innerHTML = esEjemplo
       ? `<div class="banner sample"><span><b>Ejemplo</b> con los archivos del ${L.fmtKey(R.hoy)}. Sube los de hoy para calcular el informe actual.</span></div>`
       : `<div class="banner"><span>Informe de <b>${L.fmtKey(R.hoy)}</b> · datos de Vibrax hasta ${L.fmtFecha(R.corte)} · ${L.fmt(R.conteo.ordenes)} órdenes en la programación</span></div>`;
@@ -682,6 +736,7 @@ const SAMPLE = null;
       <section>
         <div class="sec-h"><h2>Producto que no alcanza</h2><span class="muted">${plural(R.faltantes.length, "producto", "productos")} · químicos y colorantes</span></div>
         ${falt}
+        ${(R.cambiosAplicados || []).length ? `<details class="validados" data-id="val-cambios"><summary>Productos validados a mano como cambiados (${R.cambiosAplicados.length})</summary><div class="inner"><table class="pref"><thead><tr><th>Orden</th><th>Producto</th><th>Máquina</th><th>Entra</th><th>Validado</th><th></th></tr></thead><tbody>${R.cambiosAplicados.map((c) => `<tr><td class="mono">${esc(c.orden)}</td><td>${esc(c.nombre)} <span class="mono muted">${esc(c.code)}</span></td><td>${esc(c.maquina)}</td><td>${L.fmtFecha(c.inicio)}</td><td>${L.fmtFecha(new Date(c.marcado))}</td><td><button type="button" class="mini" data-act="uncambio" data-key="${esc(c.key)}">Deshacer</button></td></tr>`).join("")}</tbody></table><p class="note">Estas líneas no se cuentan en el consumo. Si la orden ya se pesó, la marca deja de importar porque el producto real viene del archivo de pesado.</p></div></details>` : ""}
         <p class="note">Disponible = Kardex + Consignación + Especiales − lo pesado que no ha finalizado. El consumo se acumula en el orden en que las órdenes entran a máquina, según la fórmula planificada en Vibrax. Si el formulador cambió un producto, el cambio solo aparece al pesar.</p>
       </section>
       <section>
@@ -716,7 +771,18 @@ const SAMPLE = null;
   window.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; document.body.classList.remove("dragging"); } });
   window.addEventListener("dragover", (e) => e.preventDefault());
   window.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; document.body.classList.remove("dragging"); handle([...e.dataTransfer.files]); });
-  $("limpiar").addEventListener("click", () => { for (const k in loaded) delete loaded[k]; renderSlots(); setMsg(""); inicio(); });
+  $("limpiar").addEventListener("click", () => { for (const k in loaded) delete loaded[k]; archivos = null; renderSlots(); setMsg(""); inicio(); });
+  $("out").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b || b.disabled) return;
+    const { act, lote, orden, key, nombre } = b.dataset;
+    if (act === "pref") marcas.prefijados[lote] = { orden, ts: Date.now() };
+    else if (act === "unpref") delete marcas.prefijados[lote];
+    else if (act === "cambio") marcas.cambios[key] = { nombre, ts: Date.now() };
+    else if (act === "uncambio") delete marcas.cambios[key];
+    if (!guardarMarcas()) setMsg("La validación se aplicó, pero este navegador no permite guardarla: se perderá al cerrar la página.", "warn");
+    recalcular();
+  });
   $("copiar").addEventListener("click", async () => {
     if (!ultimo) { setMsg("Primero sube los archivos para tener un resumen que copiar."); return; }
     const t = textoPlano(ultimo);
